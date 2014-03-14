@@ -47,4 +47,8 @@ prop_model :: Mat Int -> Mat Int -> Gen Prop
 prop_model x y | z <- x * y, z' <- fromLinear (toLinear x !*! toLinear y)
   = label (show z Prelude.++ " == " Prelude.++ show z') (z == z')
 
+prop_elementwise_mult :: Mat Int -> Mat Int -> Gen Prop
+prop_elementwise_mult x y | z <- elementMultiplyWith (*) x y, z' <- fromLinear (liftI2 (liftI2 (*)) (toLinear x) (toLinear y))
+  = label (show z Prelude.++ " == " Prelude.++ show z') (z == z')
+
 main = $defaultMainGenerator

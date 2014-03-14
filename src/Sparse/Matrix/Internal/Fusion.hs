@@ -11,7 +11,7 @@
 --
 -----------------------------------------------------------------------------
 module Sparse.Matrix.Internal.Fusion
-  ( mergeStreamsWith, mergeStreamsWith0
+  ( mergeStreamsWith, mergeStreamsWith0, mergeStreamsWithMult
   ) where
 
 import Data.Vector.Fusion.Stream.Monadic (Step(..), Stream(..))
@@ -120,3 +120,47 @@ mergeStreamsWith f (Stream stepa sa0 na) (Stream stepb sb0 nb)
       Done             -> Done
   {-# INLINE [0] step #-}
 {-# INLINE [1] mergeStreamsWith #-}
+
+
+-- | This is the internal stream fusion combinator used to merge streams for multiplication
+mergeStreamsWithMult :: Monad m => (a -> a -> a) -> Stream m (Key, a) -> Stream m (Key, a) -> Stream m (Key, a)
+mergeStreamsWithMult f (Stream stepa sa0 na) (Stream stepb sb0 nb)
+  = Stream step (MergeStart sa0 sb0) (toMax na + toMax nb) where
+  step (MergeStart sa sb) = do
+    r <- stepa sa
+    return $ case r of
+      Yield (i, a) sa' -> Skip (MergeL sa' sb i a)
+      Skip sa'         -> Skip (MergeStart sa' sb)
+      Done             -> Skip (MergeLeftEnded sb)
+  step (MergeL sa sb i a) = do
+    r <- stepb sb
+    return $ case r of
+      Yield (j, b) sb' -> case compare i j of
+        LT -> Skip                 (MergeR sa sb' j b)
+        EQ -> Yield (i, f a b)     (MergeStart sa sb')
+        GT -> Skip                 (MergeL sa sb' i a)
+      Skip sb' -> Skip             (MergeL sa sb' i a)
+      Done     -> Skip             (MergeRightEnded sa)
+  step (MergeR sa sb j b) = do
+    r <- stepa sa
+    return $ case r of
+      Yield (i, a) sa' -> case compare i j of
+        LT -> Skip                (MergeR sa' sb j b)
+        EQ -> Yield (i, f a b)    (MergeStart sa' sb)
+        GT -> Skip                (MergeL sa' sb i a)
+      Skip sa' -> Skip            (MergeR sa' sb j b)
+      Done     -> Skip            (MergeLeftEnded sb)
+  step (MergeLeftEnded sb) = do
+    r <- stepb sb
+    return $ case r of
+      Yield _ sb' -> Skip (MergeLeftEnded sb')
+      Skip sb'         -> Skip (MergeLeftEnded sb')
+      Done             -> Done
+  step (MergeRightEnded sa) = do
+    r <- stepa sa
+    return $ case r of
+      Yield _ sa' -> Skip (MergeRightEnded sa')
+      Skip sa'         -> Skip (MergeRightEnded sa')
+      Done             -> Done
+  {-# INLINE [0] step #-}
+{-# INLINE [1] mergeStreamsWithMult #-}

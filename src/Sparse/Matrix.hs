@@ -47,6 +47,8 @@ module Sparse.Matrix
   , Eq0(..)
   -- * Customization
   , addWith
+  , addWith0
+  , elementMultiplyWith
   , multiplyWith
   -- * Storage
   , Arrayed(..)
@@ -330,12 +332,19 @@ addWith0 :: Arrayed a => (a -> a -> Maybe a) -> Mat a -> Mat a -> Mat a
 addWith0 f xs ys = _Mat # G.unstream (mergeStreamsWith0 f (G.stream (xs^._Mat)) (G.stream (ys^._Mat)))
 {-# INLINE addWith0 #-}
 
+-- | Elementwise multiply two matrices.
+elementMultiplyWith :: Arrayed a => (a -> a -> a) -> Mat a -> Mat a -> Mat a
+elementMultiplyWith f xs ys = _Mat # G.unstream (mergeStreamsWithMult f (G.stream (xs^._Mat)) (G.stream (ys^._Mat)))
+{-# INLINE elementMultiplyWith #-}
+
+
 -- | Multiply two matrices using the specified multiplication and addition operation.
 multiplyWith :: Arrayed a => (a -> a -> a) -> (Maybe (Heap a) -> Stream (Key, a)) -> Mat a -> Mat a -> Mat a
 {-# INLINEABLE multiplyWith #-}
 multiplyWith times make x0 y0 = case compare (size x0) 1 of
   LT -> empty
-  EQ | size y0 == 1 -> hinted $ go11 (lo x0) (head x0) (lo y0) (head y0)
+  EQ | size y0 == 0 -> empty
+     | size y0 == 1 -> hinted $ go11 (lo x0) (head x0) (lo y0) (head y0)
      | otherwise    -> hinted $ go12 (lo x0) (head x0) (lo y0) y0 (hi y0)
   GT -> case compare (size y0) 1 of
       LT -> empty
